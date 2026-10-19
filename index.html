@@ -32,7 +32,15 @@ h2{font-size:1.22rem;letter-spacing:-.025em;margin:0 0 12px}h3{margin:12px 0}.mu
 .iconremove:hover{color:#ff8fa0}
 label{display:block;margin:12px 0 5px}select,input{width:100%;padding:11px;background:#344a66;color:white;border:1px solid #ffffff24;border-radius:9px}
 .notes{display:flex;gap:7px;flex-wrap:wrap}.notes button{background:#3a506b}.notes button:not(:disabled):hover{background:#55e4d1;color:#132d37}
-.hidden{display:none}.notice{padding:12px;background:#27534d;border-radius:10px;margin:12px 0;color:#c5fff1}.danger{background:#492635;color:#ffc2cc}
+.hidden{display:none}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+.actions button{background:#39736e}
+.formgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+textarea{width:100%;min-height:90px;padding:11px;background:#344a66;color:white;border:1px solid #ffffff24;border-radius:9px;font:inherit}
+.inboxitem{display:block;width:100%;text-align:left;margin:8px 0;border:1px solid #ffffff22}
+.inboxitem.active{border-color:#55e4d1;background:#36566a}
+.channel{font-size:.8rem;color:#8fe8d8;font-weight:700}
+.notice{padding:12px;background:#27534d;border-radius:10px;margin:12px 0;color:#c5fff1}.danger{background:#492635;color:#ffc2cc}
 .layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(260px,.85fr);gap:14px;align-items:start}
 .layout .card{margin-top:0}
 footer{text-align:center;color:#8496ae;font-size:.8rem;padding:25px}
@@ -45,10 +53,18 @@ function irishDate(date){const [y,m,d]=date.split('-');return `${d}/${m}/${y}`}
 function add(date,n){let d=new Date(date+'T12:00:00');d.setDate(d.getDate()+n);return iso(d)}
 const today=iso(new Date());
 const samples=[['Bella','Aoife Byrne',30],['Max','Sean Kelly',7],['Luna','Emma Walsh',-2],['Charlie','Niamh Ryan',90],['Daisy','Jack Murphy',13],['Cooper','Sarah OBrien',45],['Milo','Tom Nolan',1],['Ruby','Kate Doyle',120],['Buddy','Lucy Quinn',60],['Rosie','Ben Clarke',-10]];
-function fresh(){return {dogs:samples.map((x,i)=>({id:i+1,name:x[0],owner:x[1],expiry:add(today,x[2])})),bookings:samples.map((x,i)=>({dogId:i+1,date:add(today,i<8?0:i===8?1:2),checked:false})),notes:[],nextId:11}}
+function fresh(){return {dogs:samples.map((x,i)=>({id:i+1,name:x[0],owner:x[1],expiry:add(today,x[2])})),bookings:samples.map((x,i)=>({dogId:i+1,date:add(today,i<8?0:i===8?1:2),checked:false})),notes:[],nextId:11,messages:[]}}
 let state;try{state=JSON.parse(localStorage.getItem(KEY))||fresh()}catch{state=fresh()}
+if(!Array.isArray(state.messages))state.messages=[];
 function save(){localStorage.setItem(KEY,JSON.stringify(state))}
-let view='bookings',start=today,chosen=today,message='';
+const demoInbox=[
+ {id:1,dogId:1,channel:'WhatsApp',text:'Hi! Has Bella eaten her lunch?',reply:''},
+ {id:2,dogId:2,channel:'SMS',text:'How is Max getting on today?',reply:''},
+ {id:3,dogId:4,channel:'Instagram',text:'Did Charlie enjoy his walk?',reply:''},
+ {id:4,dogId:5,channel:'WhatsApp',text:'Could you let me know if Daisy has napped?',reply:''}
+];
+if(!state.messages.length){state.messages=demoInbox;save()}
+let view='bookings',start=today,chosen=today,message='',selectedMsg=1;
 function escapeHTML(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function status(d){let days=Math.round((new Date(d.expiry+'T12:00:00')-new Date(today+'T12:00:00'))/DAY);return days<0?['Expired','red']:days<=14?['Expires in '+days+' day(s)','amber']:['In date','']}
 function count(date){return state.bookings.filter(b=>b.date===date).length}
@@ -62,11 +78,26 @@ function renderBookings(){
  document.getElementById('bookings').innerHTML=`
  <div class="card"><div class="row"><h2>Week at a glance</h2><div><button aria-label="Previous week" onclick="shift(-7)" ${add(start,-7)<today?'disabled':''}>←</button> <button aria-label="Next week" onclick="shift(7)">→</button></div></div>
  <div class="grid">${days.map(d=>{let used=count(d),pct=used/CAP*100;return `<button class="day ${chosen===d?'selected':''}" aria-pressed="${chosen===d}" onclick="pick('${d}')"><strong>${new Date(d+'T12:00:00').toLocaleDateString('en-IE',{weekday:'short',day:'numeric',month:'short'})}</strong><small>${used}/${CAP} booked · ${CAP-used} free</small><span class="track"><span class="fill ${pct>=100?'full':pct>=75?'busy':''}" style="width:${pct}%"></span></span></button>`}).join('')}</div></div>
- <div class="layout"><div class="card"><h2>Quick book · ${irishDate(chosen)}</h2><p class="muted">Tap a dog's name once to book immediately. Dogs already booked or with expired vaccinations are unavailable.</p>
+ <div class="card"><div class="row"><h2>New customer / dog</h2><button onclick="toggleNewDog()">+ Add new dog</button></div>
+<div id="newDogForm" class="hidden"><p class="muted">Register a new dog, then book it using Quick book. Fictional data only.</p>
+<div class="formgrid"><label>Dog's name<input id="newName" maxlength="50" placeholder="e.g. Alfie"></label>
+<label>Owner's name<input id="newOwner" maxlength="70" placeholder="e.g. Jane Murphy"></label>
+<label>Owner mobile<input id="newPhone" type="tel" maxlength="25" placeholder="e.g. 087 000 0000"></label>
+<label>Vaccination expiry<input id="newExpiry" type="date"></label></div>
+<button onclick="addNewDog()">Save dog</button><p id="newDogError" role="alert" class="muted"></p></div></div>
+<div class="layout"><div class="card"><h2>Quick book · ${irishDate(chosen)}</h2><p class="muted">Tap a dog's name once to book immediately. Dogs already booked or with expired vaccinations are unavailable.</p>
  <div class="quick">${dogs.map(d=>{let already=booked.some(b=>b.dogId===d.id),invalid=d.expiry<chosen,full=booked.length>=CAP;return `<button onclick="quickBook(${d.id})" ${already||invalid?'disabled':''} title="${already?'Already booked':invalid?'Vaccination expired':full?'Day full':'Book '+escapeHTML(d.name)}"><strong>${escapeHTML(d.name)}</strong><small>${already?'✓ Booked':invalid?'Vaccination expired':full?'Full · tap for alternative':'Tap to book'}</small></button>`}).join('')}</div>
  <div class="notice ${message.startsWith('Cannot')?'danger':''}" role="status" aria-live="polite">${escapeHTML(message||'Select a day, then tap a dog to book.')}</div></div>
  <div class="card"><h2>Roster · ${irishDate(chosen)}</h2><p class="muted">${booked.length}/${CAP} booked · ${CAP-booked.length} spaces remaining</p>
  ${booked.map(b=>{let d=state.dogs.find(x=>x.id===b.dogId);return `<div class="roster"><span>${escapeHTML(d.name)} <span class="muted">· ${escapeHTML(d.owner)}</span></span><button class="iconremove" aria-label="Remove ${escapeHTML(d.name)}" title="Remove ${escapeHTML(d.name)}" onclick="cancel(${d.id},'${chosen}')">×</button></div>`}).join('')||'<p class="muted">No bookings for this day yet.</p>'}</div></div>`;
+}
+function toggleNewDog(){document.getElementById('newDogForm').classList.toggle('hidden')}
+function addNewDog(){
+ const name=document.getElementById('newName').value.trim(),owner=document.getElementById('newOwner').value.trim(),phone=document.getElementById('newPhone').value.trim(),expiry=document.getElementById('newExpiry').value;
+ if(!name||!owner||!phone||!/^\\d{4}-\\d{2}-\\d{2}$/.test(expiry)){document.getElementById('newDogError').textContent='Please complete all four fields.';return}
+ if(!/^[-+()\\d\\s]{7,25}$/.test(phone)){document.getElementById('newDogError').textContent='Please enter a valid phone number.';return}
+ const id=state.nextId++;state.dogs.push({id,name,owner,phone,expiry});save();
+ message=name+' registered. Select their name in Quick book to make a booking.';render();
 }
 function quickBook(id){
  const d=state.dogs.find(x=>x.id===id);
@@ -85,21 +116,34 @@ function renderToday(){let bs=state.bookings.filter(b=>b.date===today);document.
 function checkin(id){let b=state.bookings.find(b=>b.date===today&&b.dogId===id),d=state.dogs.find(d=>d.id===id);if(!b||d.expiry<today)return;b.checked=!b.checked;save();render()}
 function note(id,type){let b=state.bookings.find(b=>b.date===today&&b.dogId===id);if(!b||!b.checked)return;state.notes.push({dogId:id,date:today,type,time:new Date().toLocaleTimeString('en-IE',{hour:'2-digit',minute:'2-digit'})});save();render()}
 function renderPupdate(){
-  // Owner-facing demonstration is deliberately fixed to Bella.
-  // No owner selector or other dogs' details are rendered here.
-  const d=state.dogs.find(d=>d.id===1);
-  const ns=state.notes.filter(n=>n.dogId===1&&n.date===today);
-  document.getElementById('pupdate').innerHTML=`
-    <div class="card">
-      <span class="badge">SAMPLE DATA · Owner preview</span>
-      <h2 style="margin-top:12px">🐶 Bella's Pupdate</h2>
-      <p>Today's updates · ${irishDate(today)}</p>
-      <p class="muted">This preview shows only Bella's activity notes.</p>
-      ${ns.length
-        ? ns.map(n=>`<p class="notice">🐾 ${escapeHTML(n.type)} at ${escapeHTML(n.time)}</p>`).join('')
-        : '<p class="notice">No updates for Bella yet today.</p>'}
-    </div>
-    <p class="muted">Demo only: this is a fixed single-dog preview, not a secure owner login. Authentication and access controls are required before real customer use.</p>`;
+ const m=state.messages.find(x=>x.id===selectedMsg)||state.messages[0];
+ const d=m?state.dogs.find(x=>x.id===m.dogId):null;
+ const replies=['Ate lunch','Enjoyed a walk','Played happily','Had a nap'];
+ document.getElementById('pupdate').innerHTML=`
+ <div class="card"><span class="badge">STAFF DEMO · Simulated inbox</span><h2 style="margin-top:10px">Pupdate messages</h2>
+ <p class="muted">Fictional WhatsApp, Instagram and SMS messages. These are examples, not connected to real accounts.</p></div>
+ <div class="layout"><div class="card"><h2>Incoming messages</h2>
+ ${state.messages.map(x=>{let dog=state.dogs.find(z=>z.id===x.dogId);return `<button class="inboxitem ${m&&m.id===x.id?'active':''}" onclick="selectMessage(${x.id})"><span class="channel">${escapeHTML(x.channel)}</span><br><strong>${escapeHTML(dog?dog.name:'Unknown dog')}</strong><br><small>${escapeHTML(x.text)}</small>${x.reply?'<br><small>✓ Draft reply saved</small>':''}</button>`}).join('')}</div>
+ <div class="card">${m&&d?`<span class="channel">${escapeHTML(m.channel)}</span><h2>${escapeHTML(d.name)} · ${escapeHTML(d.owner)}</h2>
+ <p class="notice">${escapeHTML(m.text)}</p>
+ <h3>One-tap replies</h3><div class="notes">${replies.map(r=>`<button onclick="quickReply(${m.id},'${r}')">${r}</button>`).join('')}</div>
+ <label for="replyText">Reply to ${escapeHTML(d.owner)}</label><textarea id="replyText" maxlength="600" placeholder="Write a reply...">${escapeHTML(m.reply||'')}</textarea>
+ <div class="actions"><button onclick="saveReply(${m.id})">Save reply</button><button onclick="copyReply(${m.id})">Copy message</button>${m.channel==='SMS'&&d.phone?`<button onclick="openSMS(${m.id})">Open SMS</button>`:''}</div>
+ <p class="muted" id="replyStatus">Replies are saved in this browser only. Copy to send using your messaging app; no messages are sent automatically.</p>`:'No message selected.'}</div></div>`;
 }
+function selectMessage(id){selectedMsg=id;render()}
+function quickReply(id,text){
+ const m=state.messages.find(x=>x.id===id),d=state.dogs.find(x=>x.id===m.dogId);
+ m.reply=`Hi ${d.owner}! ${d.name} ${text.toLowerCase()} today at Waggy Tails. 🐾`;save();render();
+}
+function saveReply(id){let m=state.messages.find(x=>x.id===id);m.reply=document.getElementById('replyText').value.trim();save();render()}
+async function copyReply(id){
+ saveReply(id);const m=state.messages.find(x=>x.id===id),el=document.getElementById('replyStatus');
+ if(!m.reply){el.textContent='Write or select a reply first.';return}
+ try{await navigator.clipboard.writeText(m.reply);el.textContent='Reply copied. Paste it into the correct conversation.'}
+ catch{el.textContent='Copy is unavailable here. Select the reply text and copy it manually.'}
+}
+function openSMS(id){saveReply(id);let m=state.messages.find(x=>x.id===id),d=state.dogs.find(x=>x.id===m.dogId);if(d.phone&&m.reply)location.href='sms:'+encodeURIComponent(d.phone)+'?body='+encodeURIComponent(m.reply)}
+
 render();
 </script></body></html>
